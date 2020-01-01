@@ -4,7 +4,7 @@ import io.github.cottonmc.enpassant.util.JsonCache
 import org.gradle.api.Project
 import java.io.File
 
-class EnPassantExtension {
+open class EnPassantExtension {
     var rootPackage: String? = null
 
     var packageDictionary: File? = null
