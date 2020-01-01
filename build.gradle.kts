@@ -8,7 +8,7 @@ plugins {
 
 group = "io.github.cottonmc"
 base.archivesBaseName = "en-passant"
-version = "0.0.9"
+version = "0.0.10"
 
 val privateConfig = rootProject.file("private.gradle")
 if (privateConfig.exists()) {

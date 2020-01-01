@@ -99,8 +99,10 @@ class EnPassant : Plugin<Project> {
 
         val renameObfuscatedReferencesTask: RenameReferencesTask = target.createTask("renameObfuscatedReferences") {
             dependsOn(remapProguardJarTask)
-            input = remapProguardJarTask.outputs.files.singleFile
-            mappings = proguardTask.getConfiguration().printMapping
+            project.afterEvaluate {
+                if (!hasInput()) input = remapProguardJarTask.outputs.files.singleFile
+                if (!hasMappings()) mappings = proguardTask.getConfiguration().printMapping
+            }
             output = project.buildDir.resolve("proguard/renameObfuscatedReferences")
         }
 

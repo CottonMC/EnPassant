@@ -26,6 +26,9 @@ open class RenameReferencesTask : DefaultTask() {
     @get:OutputDirectory
     lateinit var output: File
 
+    internal fun hasInput(): Boolean = this::input.isInitialized
+    internal fun hasMappings(): Boolean = this::mappings.isInitialized
+
     @TaskAction
     open fun renameFiles() {
         if (output.exists()) {
