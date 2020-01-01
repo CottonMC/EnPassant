@@ -46,6 +46,12 @@ gradlePlugin {
     }
 }
 
+afterEvaluate {
+    publishing.publications
+        .getByName<MavenPublication>("pluginMaven")
+        .artifactId = "en-passant"
+}
+
 tasks {
     compileKotlin {
         kotlinOptions.jvmTarget = "1.8"

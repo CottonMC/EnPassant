@@ -15,8 +15,9 @@ artifactory {
                 password = artifactoryPassword
             }
             defaults {
-                publications("pluginMaven")
-                publications("en-passantPluginMarker")
+                for (String publication : publishing.publications.names) {
+                    publications(publication)
+                }
             }
         }
     } else {
