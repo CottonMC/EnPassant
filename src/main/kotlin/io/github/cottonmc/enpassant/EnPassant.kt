@@ -9,8 +9,9 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.plugins.BasePluginConvention
-import org.gradle.jvm.tasks.Jar
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 internal val Project.hasKotlin
     get() = plugins.hasPlugin("org.jetbrains.kotlin.jvm")
@@ -26,12 +27,16 @@ class EnPassant : Plugin<Project> {
         val extension = target.extensions.create("enPassant", EnPassantExtension::class.java)
         extension.project = target
 
+        copyDefaultDictionaries(target)
+
         val proguardTask: EnPassantProguardTask = target.createTask("proguard") {
-            val jar = target.tasks.getByName("jar") as Jar
+            val jar = target.tasks.getByName("jar")
             dependsOn(jar)
             injars(jar.outputs.files)
             outjars(project.buildDir.resolve("proguard/output.jar"))
             printmapping(project.buildDir.resolve("proguard/mappings.txt"))
+            packageobfuscationdictionary(project.buildDir.resolve("proguard/defaultDictionaries/packages.txt"))
+            classobfuscationdictionary(project.buildDir.resolve("proguard/defaultDictionaries/classes.txt"))
 
             // Keep @Environment and mixin annotations.
             // This also keeps @kotlin.Metadata :/
@@ -114,5 +119,20 @@ class EnPassant : Plugin<Project> {
         }
 
         target.tasks.getByName("build").dependsOn(renamedProguardJarTask)
+    }
+
+    private fun copyDefaultDictionaries(project: Project) {
+        val dir = project.buildDir.toPath().resolve("proguard").resolve("defaultDictionaries")
+        Files.createDirectories(dir)
+        Files.copy(
+            EnPassant::class.java.getResourceAsStream("/en-passant/dictionaries/packages.txt"),
+            dir.resolve("packages.txt"),
+            StandardCopyOption.REPLACE_EXISTING
+        )
+        Files.copy(
+            EnPassant::class.java.getResourceAsStream("/en-passant/dictionaries/classes.txt"),
+            dir.resolve("classes.txt"),
+            StandardCopyOption.REPLACE_EXISTING
+        )
     }
 }

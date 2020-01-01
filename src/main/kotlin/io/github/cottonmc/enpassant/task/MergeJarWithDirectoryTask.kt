@@ -33,6 +33,7 @@ open class MergeJarWithDirectoryTask : DefaultTask() {
 
                 if (!it.isDirectory) {
                     path.parent?.let { parent -> Files.createDirectories(parent) }
+                    Files.deleteIfExists(path)
                     Files.write(path, it.file.readBytes())
                 }
             }

@@ -1,0 +1,25 @@
+# These class names are from DataFixerUpper by Mojang (https://github.com/Mojang/DataFixerUpper)
+Grate
+ReForgetEP
+Wander
+Inj2
+Bang
+ReCocartesian
+Algebra
+Optic
+PStore
+Comp
+Affine
+Out
+Mapping
+Check
+ProfunctorFunctorWrapper
+Bicontravariant
+CocartesianLike
+IdF
+FamilyOptic
+PointFree
+In
+OpticParts
+RecursivePoint
+Hook
