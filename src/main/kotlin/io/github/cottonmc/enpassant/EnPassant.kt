@@ -4,6 +4,7 @@ import arrow.core.Either
 import arrow.core.Left
 import arrow.core.Right
 import io.github.cottonmc.enpassant.task.EnPassantProguardTask
+import io.github.cottonmc.enpassant.task.RenameReferencesTask
 import io.github.cottonmc.enpassant.util.JsonUtil
 import io.github.cottonmc.proguardparser.ClassMapping
 import io.github.cottonmc.proguardparser.Renameable
@@ -96,100 +97,24 @@ class EnPassant : Plugin<Project> {
             addNestedDependencies.set(true)
         }
 
+        val renameObfuscatedReferencesTask: RenameReferencesTask = target.createTask("renameObfuscatedReferences") {
+            dependsOn(remapProguardJarTask)
+            input = remapProguardJarTask.outputs.files.singleFile
+            mappings = proguardTask.getConfiguration().printMapping
+            output = project.buildDir.resolve("proguard/renameObfuscatedReferences")
+        }
+
         @Suppress("UnstableApiUsage")
         val renamedProguardJarTask: Jar = target.createTask("renamedProguardJar") {
-            dependsOn(remapProguardJarTask)
+            dependsOn(remapProguardJarTask, renameObfuscatedReferencesTask)
             archiveClassifier.set("proguard")
-
             target.afterEvaluate {
-                val mappingFile = proguardTask.getConfiguration().printMapping
-                if (!mappingFile.exists()) {
-                    project.logger.warn(":mapping file '${mappingFile.path}' doesn't exist yet, returning early")
-                    return@afterEvaluate
-                }
-
-                val cache = extension.jsonCache
-                val mixins = JsonUtil.getMixinJsonPaths(cache)
-                val mappings = parseProguardMappings(mappingFile.readLines())
                 val output = remapProguardJarTask.outputs.files.singleFile
-
                 from(project.zipTree(output)) {
                     exclude("fabric.mod.json")
-                    exclude(mixins)
+                    exclude { it.relativePath.getFile(renameObfuscatedReferencesTask.output).exists() }
                 }
-
-                from(project.zipTree(output)) {
-                    include("fabric.mod.json")
-                    filter { line ->
-                        JsonUtil.getEntrypointValues(cache)
-                            .asSequence()
-                            .map { entrypoint ->
-                                // Entrypoint classes (a.b.c.Mod)
-                                // => Either.Left
-                                val classes = mappings.classes.asSequence()
-                                    .filter { c -> entrypoint == c.from }
-                                    .map(::Left)
-
-                                // Entrypoint members (a.b.c.Mod::init)
-                                // => Either.Right
-                                val members = mappings.classes.asSequence()
-                                    .flatMap { c ->
-                                        val methods = c.methods.asSequence().map { m -> c to m }
-                                        val fields = c.fields.asSequence().map { f -> c to f }
-                                        methods + fields
-                                    }
-                                    .filter { (c, r) -> entrypoint == "${c.from}::${r.from}" }
-                                    .map(::Right)
-
-                                classes + members
-                            }
-                            .onEach { candidates ->
-                                // Check for duplicated Either.Right members
-                                val candidateList = candidates
-                                    .filterIsInstance<Either.Right<Pair<ClassMapping, Renameable>>>()
-                                    .map { it.b }
-                                    .toList()
-
-                                if (candidateList.size > 1) {
-                                    val (clazz, candidate) = candidateList.first()
-                                    val name = "${clazz.from}::${candidate.from}"
-                                    project.logger.warn(":found more than one entrypoint candidate for '$name'")
-                                }
-                            }
-                            .flatten() // Flatten groups of entrypoint candidates
-                            .fold(line) { acc, candidate ->
-                                when (candidate) {
-                                    is Either.Left -> {
-                                        val value = candidate.a
-                                        acc.replace("\"${value.from}\"", "\"${value.to}\"")
-                                    }
-                                    is Either.Right -> {
-                                        val (clazz, member) = candidate.b
-                                        val from = "${clazz.from}::${member.from}"
-                                        val to = "${clazz.to}::${member.to}"
-                                        acc.replace("\"$from\"", "\"$to\"")
-                                    }
-                                }
-                            }
-                    }
-                }
-
-                for (mixin in mixins) {
-                    from(project.zipTree(output)) {
-                        include(mixin)
-                        filter {
-                            val oldPackage = JsonUtil.getMixinPackage(cache, mixin)
-                            val newPackage = mappings.findPackage(oldPackage) ?: oldPackage
-
-                            mappings.findClassesInPackage(oldPackage)
-                                .fold(it.replace(oldPackage, newPackage)) { acc, clazz ->
-                                    val from = clazz.from.substringAfter(oldPackage)
-                                    val to = clazz.to.substringAfter(newPackage)
-                                    acc.replace("\"$from\"", "\"$to\"")
-                                }
-                        }
-                    }
-                }
+                from(project.fileTree(renameObfuscatedReferencesTask.output))
             }
         }
 
