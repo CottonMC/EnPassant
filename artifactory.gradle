@@ -1,20 +1,24 @@
 artifactory {
-    contextUrl = "http://server.bbkr.space:8081/artifactory/"
-    publish {
-        repository {
+    if (project.hasProperty("artifactoryUser")) {
+        contextUrl = "http://server.bbkr.space:8081/artifactory/"
+        publish {
+            repository {
 //            if (project.version.toString().contains("SNAPSHOT")) {
 //                repoKey = "libs-snapshot-local"
 //            } else {
 //                repoKey = "libs-release-local"
 //            }
 
-            repoKey = "libs-release-local"
+                repoKey = "libs-release-local"
 
-            username = (!project.hasProperty("artifactoryUser")) ? System.getProperty("artifactoryUser") : artifactoryUser
-            password = (!project.hasProperty("artifactoryPassword")) ? System.getProperty("artifactoryPassword") : artifactoryPassword
+                username = artifactoryUser
+                password = artifactoryPassword
+            }
+            defaults {
+                publications("pluginMaven")
+            }
         }
-        defaults {
-            publications("pluginMaven")
-        }
+    } else {
+        println("Cannot configure artifactory; please define ext.artifactoryUser and ext.artifactoryPassword before running artifactoryPublish")
     }
 }
