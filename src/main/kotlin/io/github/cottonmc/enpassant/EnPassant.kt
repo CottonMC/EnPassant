@@ -73,7 +73,23 @@ class EnPassant : Plugin<Project> {
                     JsonUtil.getMixinPackage(cache, mixinJson)
                 }
                 for (pkg in mixinPackages) {
-                    keep(mapOf("allowobfuscation" to true), "class $pkg.** {\n    *;\n}")
+                    keep(
+                        mapOf("allowobfuscation" to true),
+                        """
+                        class $pkg.** {
+                            *;
+                        }
+                        """.trimIndent()
+                    )
+
+                    keepclassmembernames(
+                        """
+                        class $pkg.** {
+                            @org.spongepowered.asm.mixin.Shadow *;
+                            @org.spongepowered.asm.mixin.Unique *;
+                        }
+                        """.trimIndent()
+                    )
                 }
 
                 // TODO: Limit the automatically kept amount
@@ -95,6 +111,7 @@ class EnPassant : Plugin<Project> {
             }
         }
 
+        // TODO: Why does this not map mixin @Shadows like the default remapJar task?
         @Suppress("UnstableApiUsage")
         val remapProguardJarTask: RemapJarTask = target.createTask("remapProguardJar") {
             dependsOn(proguardTask)
