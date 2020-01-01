@@ -16,6 +16,7 @@ artifactory {
             }
             defaults {
                 publications("pluginMaven")
+                publications("en-passantPluginMarker")
             }
         }
     } else {
