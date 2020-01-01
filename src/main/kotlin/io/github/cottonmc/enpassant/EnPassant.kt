@@ -77,12 +77,17 @@ class EnPassant : Plugin<Project> {
                 }
 
                 // TODO: Limit the automatically kept amount
-                val entrypoints = JsonUtil.getEntrypointValues(cache).map { it.substringBeforeLast("::") }
+                val entrypoints = JsonUtil.getEntrypointValues(cache)
                 for (entrypoint in entrypoints) {
+                    val className = entrypoint.substringBefore("::")
+                    val memberName = if ("::" in entrypoint) entrypoint.substringAfter("::") else null
+                    val member = if (memberName != null) "* $memberName;\n    * $memberName(*);" else ""
+
                     keep(
+                        mapOf("allowobfuscation" to !project.hasKotlin),
                         """
-                        class $entrypoint {
-                            *;
+                        class $className {
+                            $member
                         }
                         """.trimIndent()
                     )

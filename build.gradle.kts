@@ -8,7 +8,7 @@ plugins {
 
 group = "io.github.cottonmc"
 base.archivesBaseName = "en-passant"
-version = "0.0.32"
+version = "0.0.34"
 
 val privateConfig = rootProject.file("private.gradle")
 if (privateConfig.exists()) {
@@ -37,6 +37,7 @@ dependencies {
     implementation("blue.endless:jankson:1.2.0")
 
     implementation("net.fabricmc:fabric-loom:0.2.6-SNAPSHOT")
+    implementation("com.google.code.gson:gson:2.8.6")
 }
 
 gradlePlugin {
