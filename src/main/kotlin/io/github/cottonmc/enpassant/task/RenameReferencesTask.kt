@@ -104,6 +104,7 @@ open class RenameReferencesTask : DefaultTask() {
         outputDirectory.resolve("fabric.mod.json").writeText(output)
     }
 
+    // TODO: Process refmaps
     private fun processMixins(mappings: ProjectMapping, cache: JsonCache, outputDirectory: File) {
         // TODO: This can work on the raw JSON object
         val mixins = JsonUtil.getMixinJsonPaths(cache)
@@ -114,9 +115,9 @@ open class RenameReferencesTask : DefaultTask() {
                 val newPackage = mappings.findPackage(oldPackage) ?: oldPackage
 
                 mappings.findClassesInPackage(oldPackage)
-                    .fold(it.replace("\"$oldPackage\"", "\"newPackage\"")) { acc, clazz ->
-                        val from = clazz.from.substringAfter(oldPackage)
-                        val to = clazz.to.substringAfter(newPackage)
+                    .fold(it.replace("\"$oldPackage\"", "\"$newPackage\"")) { acc, clazz ->
+                        val from = clazz.from.substringAfter("$oldPackage.")
+                        val to = clazz.to.substringAfter("$newPackage.")
                         acc.replace("\"$from\"", "\"$to\"")
                     }
             }.map { it + '\n' }.joinToString(separator = "")

@@ -1,18 +1,14 @@
 package io.github.cottonmc.enpassant
 
-import arrow.core.Either
-import arrow.core.Left
-import arrow.core.Right
 import io.github.cottonmc.enpassant.task.EnPassantProguardTask
+import io.github.cottonmc.enpassant.task.MergeJarWithDirectoryTask
 import io.github.cottonmc.enpassant.task.RenameReferencesTask
 import io.github.cottonmc.enpassant.util.JsonUtil
-import io.github.cottonmc.proguardparser.ClassMapping
-import io.github.cottonmc.proguardparser.Renameable
-import io.github.cottonmc.proguardparser.parseProguardMappings
 import net.fabricmc.loom.task.RemapJarTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.plugins.BasePluginConvention
 import org.gradle.jvm.tasks.Jar
 import java.io.File
 
@@ -107,16 +103,13 @@ class EnPassant : Plugin<Project> {
         }
 
         @Suppress("UnstableApiUsage")
-        val renamedProguardJarTask: Jar = target.createTask("renamedProguardJar") {
+        val renamedProguardJarTask: MergeJarWithDirectoryTask = target.createTask("renamedProguardJar") {
             dependsOn(remapProguardJarTask, renameObfuscatedReferencesTask)
-            archiveClassifier.set("proguard")
             target.afterEvaluate {
-                val output = remapProguardJarTask.outputs.files.singleFile
-                from(project.zipTree(output)) {
-                    exclude("fabric.mod.json")
-                    exclude { it.relativePath.getFile(renameObfuscatedReferencesTask.output).exists() }
-                }
-                from(project.fileTree(renameObfuscatedReferencesTask.output))
+                val archivesBaseName = project.convention.getPlugin(BasePluginConvention::class.java).archivesBaseName
+                output = project.buildDir.resolve("libs").resolve("$archivesBaseName-${project.version}-proguard.jar")
+                jar = remapProguardJarTask.outputs.files.singleFile
+                directory = renameObfuscatedReferencesTask.output
             }
         }
 
