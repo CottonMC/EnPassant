@@ -8,7 +8,7 @@ plugins {
 
 group = "io.github.cottonmc"
 base.archivesBaseName = "en-passant"
-version = "0.0.7"
+version = "0.0.8"
 
 val privateConfig = rootProject.file("private.gradle")
 if (privateConfig.exists()) {
@@ -46,10 +46,16 @@ gradlePlugin {
     }
 }
 
+val sourcesJar = tasks.create<Jar>("sourcesJar") {
+    archiveClassifier.set("sources")
+    from(sourceSets.main.get().allSource)
+}
+
 afterEvaluate {
-    publishing.publications
-        .getByName<MavenPublication>("pluginMaven")
-        .artifactId = "en-passant"
+    publishing.publications.getByName<MavenPublication>("pluginMaven") {
+        artifactId = "en-passant"
+        artifact(sourcesJar)
+    }
 }
 
 tasks {
