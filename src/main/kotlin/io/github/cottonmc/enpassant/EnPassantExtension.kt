@@ -15,6 +15,8 @@ open class EnPassantExtension {
 
     var mappingsFile: File? = null
 
+    var obfuscateMixins: Boolean = false
+
     internal lateinit var project: Project
 
     internal val jsonCache: JsonCache by lazy {

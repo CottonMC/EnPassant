@@ -74,7 +74,7 @@ class EnPassant : Plugin<Project> {
                 }
                 for (pkg in mixinPackages) {
                     keep(
-                        mapOf("allowobfuscation" to true),
+                        mapOf("allowobfuscation" to extension.obfuscateMixins),
                         """
                         class $pkg.** {
                             *;
