@@ -3,17 +3,24 @@ plugins {
     `java-gradle-plugin`
     kotlin("jvm") version "1.3.61"
     `maven-publish`
-    // TODO: Set up Artifactory
+    id("com.jfrog.artifactory") version "4.9.0"
 }
 
 group = "io.github.cottonmc"
-version = "0.1.0-SNAPSHOT"
+version = "0.0.1"
+
+val privateConfig = rootProject.file("private.gradle")
+if (privateConfig.exists()) {
+    apply(from = privateConfig)
+}
+
+apply(from = "artifactory.gradle")
 
 repositories {
     mavenCentral()
     maven {
         name = "CottonMC"
-        setUrl("http://server.bbkr.space:8081/artifactory/libs-release")
+        url = uri("http://server.bbkr.space:8081/artifactory/libs-release")
     }
     maven {
         name = "FabricMC"
@@ -25,7 +32,7 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
 
     api("net.sf.proguard:proguard-gradle:6.2.2")
-    implementation("io.github.cottonmc:proguard-mappings-parser:1.2.0")
+    implementation("io.github.cottonmc:proguard-mappings-parser:1.3.0")
     implementation("blue.endless:jankson:1.2.0")
 
     implementation("net.fabricmc:fabric-loom:0.2.6-SNAPSHOT")
