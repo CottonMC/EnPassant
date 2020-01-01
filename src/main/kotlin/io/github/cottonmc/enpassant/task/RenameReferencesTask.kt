@@ -108,11 +108,14 @@ open class RenameReferencesTask : DefaultTask() {
     private fun processMixins(mappings: ProjectMapping, cache: JsonCache, outputDirectory: File) {
         // TODO: This can work on the raw JSON object
         val mixins = JsonUtil.getMixinJsonPaths(cache)
+        val mixinPackages = mutableListOf<String>()
         for (mixin in mixins) {
             val input = cache[mixin].toJson(JsonGrammar.STRICT).lineSequence()
             val output = input.map {
                 val oldPackage = JsonUtil.getMixinPackage(cache, mixin)
                 val newPackage = mappings.findPackage(oldPackage) ?: oldPackage
+
+                mixinPackages += oldPackage // Used for refmaps
 
                 mappings.findClassesInPackage(oldPackage)
                     .fold(it.replace("\"$oldPackage\"", "\"$newPackage\"")) { acc, clazz ->
@@ -122,6 +125,24 @@ open class RenameReferencesTask : DefaultTask() {
                     }
             }.map { it + '\n' }.joinToString(separator = "")
             val outputFile = outputDirectory.resolve(mixin)
+            outputFile.parentFile.mkdirs()
+            outputFile.writeText(output)
+        }
+
+        val mixinClasses = mixinPackages
+            .flatMap { mappings.findClassesInPackage(it) }
+            // Mixin refmaps use the a/b/mixin/MyMixin format (with slashes instead of dots)
+            .map { it.from.replace('.', '/') to it.to.replace('.', '/') }
+
+        val refmaps = JsonUtil.getMixinRefmapPaths(cache)
+        for (refmap in refmaps) {
+            val input = cache[refmap].toJson(JsonGrammar.STRICT).lineSequence()
+            val output = input.map {
+                mixinClasses.fold(it) { acc, (from, to) ->
+                    acc.replace("\"$from\":", "\"$to\":")
+                }
+            }.map { it + '\n' }.joinToString(separator = "")
+            val outputFile = outputDirectory.resolve(refmap)
             outputFile.parentFile.mkdirs()
             outputFile.writeText(output)
         }

@@ -36,6 +36,11 @@ internal object JsonUtil {
                 }
             }
 
+    fun getMixinRefmapPaths(cache: JsonCache): List<String> =
+        getMixinJsonPaths(cache).mapNotNull {
+            cache[it][String::class.java, "refmap"]
+        }
+
     fun getMixinPackage(cache: JsonCache, path: String): String =
         (cache[path]["package"] as? JsonPrimitive
             ?: throw IllegalArgumentException("Mixin 'package' key must be a JSON primitive")).asString()
