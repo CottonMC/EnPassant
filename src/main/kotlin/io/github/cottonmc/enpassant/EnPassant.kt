@@ -1,7 +1,12 @@
 package io.github.cottonmc.enpassant
 
+import arrow.core.Either
+import arrow.core.Left
+import arrow.core.Right
 import io.github.cottonmc.enpassant.task.EnPassantProguardTask
 import io.github.cottonmc.enpassant.util.JsonUtil
+import io.github.cottonmc.proguardparser.ClassMapping
+import io.github.cottonmc.proguardparser.Renameable
 import io.github.cottonmc.proguardparser.parseProguardMappings
 import net.fabricmc.loom.task.RemapJarTask
 import org.gradle.api.Plugin
@@ -67,7 +72,17 @@ class EnPassant : Plugin<Project> {
                     keep(mapOf("allowobfuscation" to true), "class $pkg.** {\n    *;\n}")
                 }
 
-                // TODO: Keep the necessary entrypoint stuff here
+                // TODO: Limit the automatically kept amount
+                val entrypoints = JsonUtil.getEntrypointValues(cache).map { it.substringBeforeLast("::") }
+                for (entrypoint in entrypoints) {
+                    keep(
+                        """
+                        class $entrypoint {
+                            *;
+                        }
+                        """.trimIndent()
+                    )
+                }
             }
         }
 
@@ -96,9 +111,57 @@ class EnPassant : Plugin<Project> {
 
                     from(project.zipTree(output)) {
                         include("fabric.mod.json")
-                        filter {
-                            // TODO: Find entrypoints
-                            it
+                        filter { line ->
+                            JsonUtil.getEntrypointValues(cache)
+                                .asSequence()
+                                .map { entrypoint ->
+                                    // Entrypoint classes (a.b.c.Mod)
+                                    // => Either.Left
+                                    val classes = mappings.classes.asSequence()
+                                        .filter { c -> entrypoint == c.from }
+                                        .map(::Left)
+
+                                    // Entrypoint members (a.b.c.Mod::init)
+                                    // => Either.Right
+                                    val members = mappings.classes.asSequence()
+                                        .flatMap { c ->
+                                            val methods = c.methods.asSequence().map { m -> c to m }
+                                            val fields = c.fields.asSequence().map { f -> c to f }
+                                            methods + fields
+                                        }
+                                        .filter { (c, r) -> entrypoint == "${c.from}::${r.from}" }
+                                        .map(::Right)
+
+                                    classes + members
+                                }
+                                .onEach { candidates ->
+                                    // Check for duplicated Either.Right members
+                                    val candidateList = candidates
+                                        .filterIsInstance<Either.Right<Pair<ClassMapping, Renameable>>>()
+                                        .map { it.b }
+                                        .toList()
+
+                                    if (candidateList.size > 1) {
+                                        val (clazz, candidate) = candidateList.first()
+                                        val name = "${clazz.from}::${candidate.from}"
+                                        project.logger.warn(":found more than one entrypoint candidate for '$name'")
+                                    }
+                                }
+                                .flatten() // Flatten groups of entrypoint candidates
+                                .fold(line) { acc, candidate ->
+                                    when (candidate) {
+                                        is Either.Left -> {
+                                            val value = candidate.a
+                                            acc.replace("\"${value.from}\"", "\"${value.to}\"")
+                                        }
+                                        is Either.Right -> {
+                                            val (clazz, member) = candidate.b
+                                            val from = "${clazz.from}::${member.from}"
+                                            val to = "${clazz.to}::${member.to}"
+                                            acc.replace("\"$from\"", "\"$to\"")
+                                        }
+                                    }
+                                }
                         }
                     }
 
