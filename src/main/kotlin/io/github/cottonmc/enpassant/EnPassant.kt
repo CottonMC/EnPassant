@@ -58,9 +58,11 @@ class EnPassant : Plugin<Project> {
                 extension.memberDictionary?.let { dict -> obfuscationdictionary(dict) }
                 extension.mappingsFile?.let { file -> printmapping(file) }
 
-                // TODO: Does this even include the JDK?
-                libraryjars(project.configurations.getByName("compileClasspath").files)
-                libraryjars(project.configurations.getByName("runtimeClasspath").files)
+                val classpaths = HashSet<File>() // Exclude duplicates
+                classpaths += project.configurations.getByName("compileClasspath").files
+                classpaths += project.configurations.getByName("runtimeClasspath").files
+                libraryjars(classpaths)
+                libraryjars("${System.getProperty("java.home")}/lib/rt.jar") // This only works on JDK <=8
             }
 
             doFirst {
@@ -99,86 +101,92 @@ class EnPassant : Plugin<Project> {
             dependsOn(remapProguardJarTask)
             archiveClassifier.set("proguard")
 
-            project.afterEvaluate {
+            target.afterEvaluate {
+                val mappingFile = proguardTask.getConfiguration().printMapping
+                if (!mappingFile.exists()) {
+                    project.logger.warn(":mapping file '${mappingFile.path}' doesn't exist yet, returning early")
+                    return@afterEvaluate
+                }
+
                 val cache = extension.jsonCache
                 val mixins = JsonUtil.getMixinJsonPaths(cache)
-                val mappings = parseProguardMappings(proguardTask.getConfiguration().printMapping.readLines())
+                val mappings = parseProguardMappings(mappingFile.readLines())
+                val output = remapProguardJarTask.outputs.files.singleFile
 
-                for (output in remapProguardJarTask.outputs.files) {
-                    from(project.zipTree(output))
-                        .exclude("fabric.mod.json")
-                        .exclude(mixins)
+                from(project.zipTree(output)) {
+                    exclude("fabric.mod.json")
+                    exclude(mixins)
+                }
 
-                    from(project.zipTree(output)) {
-                        include("fabric.mod.json")
-                        filter { line ->
-                            JsonUtil.getEntrypointValues(cache)
-                                .asSequence()
-                                .map { entrypoint ->
-                                    // Entrypoint classes (a.b.c.Mod)
-                                    // => Either.Left
-                                    val classes = mappings.classes.asSequence()
-                                        .filter { c -> entrypoint == c.from }
-                                        .map(::Left)
+                from(project.zipTree(output)) {
+                    include("fabric.mod.json")
+                    filter { line ->
+                        JsonUtil.getEntrypointValues(cache)
+                            .asSequence()
+                            .map { entrypoint ->
+                                // Entrypoint classes (a.b.c.Mod)
+                                // => Either.Left
+                                val classes = mappings.classes.asSequence()
+                                    .filter { c -> entrypoint == c.from }
+                                    .map(::Left)
 
-                                    // Entrypoint members (a.b.c.Mod::init)
-                                    // => Either.Right
-                                    val members = mappings.classes.asSequence()
-                                        .flatMap { c ->
-                                            val methods = c.methods.asSequence().map { m -> c to m }
-                                            val fields = c.fields.asSequence().map { f -> c to f }
-                                            methods + fields
-                                        }
-                                        .filter { (c, r) -> entrypoint == "${c.from}::${r.from}" }
-                                        .map(::Right)
-
-                                    classes + members
-                                }
-                                .onEach { candidates ->
-                                    // Check for duplicated Either.Right members
-                                    val candidateList = candidates
-                                        .filterIsInstance<Either.Right<Pair<ClassMapping, Renameable>>>()
-                                        .map { it.b }
-                                        .toList()
-
-                                    if (candidateList.size > 1) {
-                                        val (clazz, candidate) = candidateList.first()
-                                        val name = "${clazz.from}::${candidate.from}"
-                                        project.logger.warn(":found more than one entrypoint candidate for '$name'")
+                                // Entrypoint members (a.b.c.Mod::init)
+                                // => Either.Right
+                                val members = mappings.classes.asSequence()
+                                    .flatMap { c ->
+                                        val methods = c.methods.asSequence().map { m -> c to m }
+                                        val fields = c.fields.asSequence().map { f -> c to f }
+                                        methods + fields
                                     }
+                                    .filter { (c, r) -> entrypoint == "${c.from}::${r.from}" }
+                                    .map(::Right)
+
+                                classes + members
+                            }
+                            .onEach { candidates ->
+                                // Check for duplicated Either.Right members
+                                val candidateList = candidates
+                                    .filterIsInstance<Either.Right<Pair<ClassMapping, Renameable>>>()
+                                    .map { it.b }
+                                    .toList()
+
+                                if (candidateList.size > 1) {
+                                    val (clazz, candidate) = candidateList.first()
+                                    val name = "${clazz.from}::${candidate.from}"
+                                    project.logger.warn(":found more than one entrypoint candidate for '$name'")
                                 }
-                                .flatten() // Flatten groups of entrypoint candidates
-                                .fold(line) { acc, candidate ->
-                                    when (candidate) {
-                                        is Either.Left -> {
-                                            val value = candidate.a
-                                            acc.replace("\"${value.from}\"", "\"${value.to}\"")
-                                        }
-                                        is Either.Right -> {
-                                            val (clazz, member) = candidate.b
-                                            val from = "${clazz.from}::${member.from}"
-                                            val to = "${clazz.to}::${member.to}"
-                                            acc.replace("\"$from\"", "\"$to\"")
-                                        }
+                            }
+                            .flatten() // Flatten groups of entrypoint candidates
+                            .fold(line) { acc, candidate ->
+                                when (candidate) {
+                                    is Either.Left -> {
+                                        val value = candidate.a
+                                        acc.replace("\"${value.from}\"", "\"${value.to}\"")
                                     }
-                                }
-                        }
-                    }
-
-                    for (mixin in mixins) {
-                        from(project.zipTree(output)) {
-                            include(mixin)
-                            filter {
-                                val oldPackage = JsonUtil.getMixinPackage(cache, mixin)
-                                val newPackage = mappings.findPackage(oldPackage) ?: oldPackage
-
-                                mappings.findClassesInPackage(oldPackage)
-                                    .fold(it.replace(oldPackage, newPackage)) { acc, clazz ->
-                                        val from = clazz.from.substringAfter(oldPackage)
-                                        val to = clazz.to.substringAfter(newPackage)
+                                    is Either.Right -> {
+                                        val (clazz, member) = candidate.b
+                                        val from = "${clazz.from}::${member.from}"
+                                        val to = "${clazz.to}::${member.to}"
                                         acc.replace("\"$from\"", "\"$to\"")
                                     }
+                                }
                             }
+                    }
+                }
+
+                for (mixin in mixins) {
+                    from(project.zipTree(output)) {
+                        include(mixin)
+                        filter {
+                            val oldPackage = JsonUtil.getMixinPackage(cache, mixin)
+                            val newPackage = mappings.findPackage(oldPackage) ?: oldPackage
+
+                            mappings.findClassesInPackage(oldPackage)
+                                .fold(it.replace(oldPackage, newPackage)) { acc, clazz ->
+                                    val from = clazz.from.substringAfter(oldPackage)
+                                    val to = clazz.to.substringAfter(newPackage)
+                                    acc.replace("\"$from\"", "\"$to\"")
+                                }
                         }
                     }
                 }
