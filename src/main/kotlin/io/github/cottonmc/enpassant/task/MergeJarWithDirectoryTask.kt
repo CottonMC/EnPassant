@@ -1,6 +1,7 @@
 package io.github.cottonmc.enpassant.task
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.FileVisitDetails
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputFile
@@ -27,7 +28,7 @@ open class MergeJarWithDirectoryTask : DefaultTask() {
         val env = hashMapOf("create" to "true")
         val outputUri = URI.create("jar:${output.toURI()}")
         FileSystems.newFileSystem(outputUri, env).use { fs ->
-            project.zipTree(jar).visit {
+            val fileVisitor = fun(it: FileVisitDetails) {
                 val segments = it.relativePath.segments
                 val path = fs.getPath(segments.first(), *segments.drop(1).toTypedArray())
 
@@ -38,16 +39,8 @@ open class MergeJarWithDirectoryTask : DefaultTask() {
                 }
             }
 
-            project.fileTree(directory).visit {
-                val segments = it.relativePath.segments
-                val path = fs.getPath(segments.first(), *segments.drop(1).toTypedArray())
-
-                if (!it.isDirectory) {
-                    path.parent?.let { parent -> Files.createDirectories(parent) }
-                    Files.deleteIfExists(path)
-                    Files.write(path, it.file.readBytes())
-                }
-            }
+            project.zipTree(jar).visit(fileVisitor)
+            project.fileTree(directory).visit(fileVisitor)
         }
     }
 }
